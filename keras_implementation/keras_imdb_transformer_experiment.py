@@ -4,8 +4,6 @@
 ## Paper Link: https://arxiv.org/abs/2403.01643
 
 ## Author: Nicholas Mesa-Cucalon (https://github.com/NMesaC)
-
-## NOTE: This implementation uses a single, shared W_a layer between all attention heads
 """
 import keras
 import tensorflow as tf
@@ -15,7 +13,14 @@ import os
 import tempfile
 import time
 
-from attention_shared_wa import MultiHeadAttention
+keras.utils.set_random_seed(1019)
+
+# NOTE: Select the shared or per head MultiHeadAttention module for Super Attention
+SUPER_SHARED = True
+if SUPER_SHARED:
+    from keras_attention_shared_wa import MultiHeadAttention
+else:
+    from keras_attention_indiv_wa import MultiHeadAttention
 
 class TransformerBlock(layers.Layer):
     def __init__(self, embed_dim, num_heads, ff_dim, max_len, layer_type = 'SDPA', rate=0.1):
@@ -81,6 +86,7 @@ def main():
     batch_size = 64     # Batch Size
     epochs     = 10     # Number of epochs
     num_heads  = 4      # Number of attention heads
+    # The IMDB dataset is slightly different between Keras and PyTorch, so the results are slightly different
     (x_train, y_train), (x_test, y_test) = keras.datasets.imdb.load_data(num_words=vocab_size)
     print(len(x_train), "Training sequences")
     x_train = keras.utils.pad_sequences(x_train, maxlen=maxlen)
@@ -90,8 +96,8 @@ def main():
     num_runs = 5
     layer_types = ['SDPA','Optimised','Efficient','Super']
     for layer in layer_types:
-        avg_test_acc, avg_test_loss = 0, 0
-        avg_run_time = 0
+        avg_test_acc, avg_test_loss   = 0, 0
+        avg_run_time, avg_model_size  = 0, 0
         for run in range(num_runs):
             print(f"Training with {layer} training layer")
             # Create inputs
@@ -147,15 +153,16 @@ def main():
             model.load_weights(checkpoint_filepath)
             test_loss, test_acc = model.evaluate(x_test, y_test)
             print(f"Test Loss: {test_loss}, Test Accuracy: {test_acc}\n")
-            avg_test_loss += test_loss
-            avg_test_acc  += test_acc
-        avg_test_loss /= num_runs
-        avg_test_acc  /= num_runs
-        avg_run_time  /= num_runs
-        print(f"Average Test Acc over {num_runs} for {layer}: {avg_test_acc} \n")
-        print(f"Average Test Loss over {num_runs} for {layer}: {avg_test_loss} \n")
-        print(f"Average Run Time over {num_runs} for {layer}: {avg_run_time} \n")
-        print("\n")
+            avg_test_loss  += test_loss
+            avg_test_acc   += test_acc
+            avg_model_size += model_size
+        file_name = f"{layer}_results.txt"
+        f = open(file_name,"a")
+        f.write(f"Average Test Acc over {num_runs} for {layer}: {avg_test_acc / num_runs} \n")
+        f.write(f"Average Test Loss over {num_runs} for {layer}: {avg_test_loss / num_runs} \n")
+        f.write(f"Average Run Time over {num_runs} for {layer}: {avg_run_time / num_runs} \n")
+        f.write(f"Average Model Size over {num_runs} for {layer}: {avg_model_size / num_runs} \n")
+        f.close()
 
 if __name__ == '__main__':
     main()

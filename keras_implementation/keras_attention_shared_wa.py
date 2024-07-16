@@ -1,3 +1,12 @@
+"""
+## "You Need to Pay Better Attention" Keras Implementation
+
+## Paper Link: https://arxiv.org/abs/2403.01643
+
+## Author: Nicholas Mesa-Cucalon (https://github.com/NMesaC)
+
+## NOTE: This implementation has a single W_a matrix FOR ALL attention layers
+"""
 import keras
 import tensorflow as tf
 from keras import ops
@@ -9,6 +18,7 @@ class AttentionLayer(keras.layers.Layer):
                  d_q: int,
                  d_k: int,
                  d_v: int,
+                 W_a: keras.layers.Dense = None,
                  layer_type: str = 'SDPA',
                  idx: int = 0,
                  max_len: int = 32,
@@ -21,20 +31,14 @@ class AttentionLayer(keras.layers.Layer):
         self.layer_type = layer_type
         self.idx = idx
         self.max_len = max_len
+        self.W_a = W_a
 
     def build(self, input_shape):
         self.W_q = layers.Dense(self.d_q)
-        self.W_q.build((None, self.d_model))
         if self.layer_type in ['SDPA', 'Optimised']:
             self.W_k = layers.Dense(self.d_k)
-            self.W_k.build((None, self.d_model))
         if self.layer_type == 'SDPA':
             self.W_v = layers.Dense(self.d_v)
-            self.W_v.build((None, self.d_model))
-        if self.layer_type == 'Super':
-            self.W_a = layers.Dense(self.max_len)
-            self.W_a.build((None, self.max_len))
-
         super().build(input_shape)
 
     def call(self, inputs):
@@ -99,30 +103,32 @@ class MultiHeadAttention(keras.layers.Layer):
         self.layer_type = layer_type
 
     def build(self,input_shape):
+        if self.layer_type == 'Super':
+            self.W_a = layers.Dense(self.max_len)
+            self.W_a.build((None, self.max_len))
+        else:
+            self.W_a = None
+
         self.attention_layers = [
-            AttentionLayer(d_model=self.d_model, 
-                           d_q=self.d_k,
-                           d_k=self.d_k,
-                           d_v=self.d_v,
-                           layer_type=self.layer_type, 
-                           idx=i, 
-                           max_len=self.max_len)
+            AttentionLayer(self.d_model, self.d_k, self.d_k, self.d_v, 
+                           self.W_a, self.layer_type, idx=i, max_len=self.max_len)
             for i in range(self.n_heads)
         ]
+        
+        self.W_o = layers.Dense(self.d_model)
 
         # Build each attention layer
         for layer in self.attention_layers:
             layer.build(input_shape)
 
         # Build the output dense layer
-        self.W_o = layers.Dense(self.d_model)
         self.W_o.build((None, self.n_heads * self.d_v))
 
         super().build(input_shape)
 
     def call(self, inputs):
         inp_q, inp_k, inp_v = inputs, inputs, inputs
-
+        
         H = None
         for i, layer in enumerate(self.attention_layers):
             h_i = layer([inp_q, inp_k, inp_v])
@@ -130,6 +136,6 @@ class MultiHeadAttention(keras.layers.Layer):
                 H = h_i
             else:
                 H = tf.concat([H, h_i], axis=-1)
-
+        
         out = self.W_o(H)
         return out
