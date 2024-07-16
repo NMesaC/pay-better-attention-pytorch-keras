@@ -96,8 +96,8 @@ def main():
     num_runs = 5
     layer_types = ['SDPA','Optimised','Efficient','Super']
     for layer in layer_types:
-        avg_test_acc, avg_test_loss   = 0, 0
-        avg_run_time, avg_model_size  = 0, 0
+        avg_test_acc, avg_test_loss, avg_model_size = 0, 0, 0
+        run_times = []
         for run in range(num_runs):
             print(f"Training with {layer} training layer")
             # Create inputs
@@ -138,7 +138,7 @@ def main():
                                 callbacks=[checkpoint_callback])
             end_time = time.time()
             duration = end_time - start_time
-            avg_run_time += duration
+            run_times.append(duration)
             print(f"Training took {duration:.4f} seconds")
 
             # Calculate model size
@@ -156,12 +156,15 @@ def main():
             avg_test_loss  += test_loss
             avg_test_acc   += test_acc
             avg_model_size += model_size
+        run_times.sort()
+        med_run_time = run_times[len(run_times) // 2]
         file_name = f"{layer}_results.txt"
         f = open(file_name,"a")
         f.write(f"Average Test Acc over {num_runs} for {layer}: {avg_test_acc / num_runs} \n")
         f.write(f"Average Test Loss over {num_runs} for {layer}: {avg_test_loss / num_runs} \n")
-        f.write(f"Average Run Time over {num_runs} for {layer}: {avg_run_time / num_runs} \n")
         f.write(f"Average Model Size over {num_runs} for {layer}: {avg_model_size / num_runs} \n")
+        f.write(f"Median Run Time over {num_runs} for {layer}: {med_run_time} \n")
+        f.write(f"Number of attention parameters for {layer}: {num_of_attention_params} \n")
         f.close()
 
 if __name__ == '__main__':
